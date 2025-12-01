@@ -177,3 +177,165 @@ sns.heatmap(correlations, cmap=sns.diverging_palette(20, 220, n=200), annot= Tru
 plt.show()
 
 # Observations: Poor correlation across the entire dataset for numerical columns
+
+# MODEL TRAINING AND EVALUATION
+
+# Classification
+# Trying XGBoost, Random Forest, Logistic Regression, and K-Nearest Neighbours
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
+
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+import pandas as pd
+import numpy as np
+
+# Separate features and target
+X = df.drop(columns=['Exited'])
+y = df['Exited']
+
+# Train-test split
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
+
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+models = {
+    "Logistic Regression": LogisticRegression(max_iter=1000),
+    "KNN": KNeighborsClassifier(n_neighbors=5),
+    "Random Forest": RandomForestClassifier(
+        n_estimators=300,
+        max_depth=None,
+        random_state=42
+    ),
+    "XGBoost": XGBClassifier(
+        n_estimators=300,
+        learning_rate=0.05,
+        max_depth=4,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        eval_metric="logloss",
+        random_state=42
+    )
+}
+
+results = []
+
+for name, model in models.items():
+    # Use scaled features for logistic regression + KNN
+    if name in ["Logistic Regression", "KNN"]:
+        model.fit(X_train_scaled, y_train)
+        preds = model.predict(X_test_scaled)
+    else:
+        model.fit(X_train, y_train)
+        preds = model.predict(X_test)
+
+    # Metrics
+    acc = accuracy_score(y_test, preds)
+    prec = precision_score(y_test, preds)
+    rec = recall_score(y_test, preds)
+    f1 = f1_score(y_test, preds)
+
+    results.append([name, acc, prec, rec, f1])
+
+# Display metrics
+results_df = pd.DataFrame(
+    results,
+    columns=["Model", "Accuracy", "Precision", "Recall", "F1 Score"]
+)
+
+print("\n=== Classification Model Performance ===\n")
+print(results_df.to_string(index=False))
+
+# Observations: Among the tested models, Random Forest and XGBoost perform the best overall, with the highest accuracy and F1 scores
+              # Likely because they handle non-linear interactions and categorical variables better
+
+
+# Regression
+# Predicting tenure for churned customers using
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LinearRegression, Ridge, Lasso, ElasticNet
+from sklearn.ensemble import RandomForestRegressor
+from xgboost import XGBRegressor
+
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+import pandas as pd
+import numpy as np
+
+# Filter for churners only
+df_reg = df[df['Exited'] == 1].copy()
+
+# Separate features and target
+# Remove leakage columns, i.e. columns that have Tenure directly used in their calculations
+X_reg = df_reg.drop(columns=['Tenure', 'Exited', 'EngagementScore'])
+leak_cols = [c for c in X_reg.columns if "Tenure" in c]
+X_reg = X_reg.drop(columns=leak_cols)
+
+y_reg = df_reg['Tenure']
+
+# Train-test split
+X_train_r, X_test_r, y_train_r, y_test_r = train_test_split(
+    X_reg, y_reg, test_size=0.2, random_state=42
+)
+
+scaler = StandardScaler()
+X_train_r_scaled = scaler.fit_transform(X_train_r)
+X_test_r_scaled = scaler.transform(X_test_r)
+
+models_r = {
+    "Linear Regression": LinearRegression(),
+    "Ridge Regression": Ridge(alpha=1.0),
+    "Lasso Regression": Lasso(alpha=0.001),
+    "Random Forest Regressor": RandomForestRegressor(
+        n_estimators=300,
+        max_depth=None,
+        random_state=42
+    ),
+    "XGBoost Regressor": XGBRegressor(
+        n_estimators=300,
+        learning_rate=0.07,
+        max_depth=6,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        random_state=42,
+        objective="reg:squarederror"
+    )
+}
+
+results_r = []
+
+for name, model in models_r.items():
+    if name in ["Linear Regression", "Ridge Regression", "Lasso Regression"]:
+        model.fit(X_train_r_scaled, y_train_r)
+        preds = model.predict(X_test_r_scaled)
+    else:
+        model.fit(X_train_r, y_train_r)
+        preds = model.predict(X_test_r)
+
+    # Metrics
+    mae = mean_absolute_error(y_test_r, preds)
+    mse = mean_squared_error(y_test_r, preds)
+    rmse = np.sqrt(mse)
+    r2 = r2_score(y_test_r, preds)
+
+    results_r.append([name, mae, mse, rmse, r2])
+
+# Display results
+results_df_r = pd.DataFrame(
+    results_r,
+    columns=["Model", "MAE", "MSE", "RMSE", "R2 Score"]
+)
+
+print("\n=== Regression Model Performance (Predicting Tenure of Churners) ===\n")
+print(results_df_r.to_string(index=False))
+
+# Observations: All regression models so very poor performance
+              # Predicting tenure before a customer exits is challenging with only demographic and basic account information
+              # Thus, more detailed behavioral or transactional data would likely be needed for meaningful predictions
