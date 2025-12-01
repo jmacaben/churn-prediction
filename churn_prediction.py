@@ -117,3 +117,63 @@ plot_two_way(data, 'Geography')
 # Observations: Customers from Germany exhibit significantly higher churn rates compared to France and Spain.
               # Tenure does not show a strong linear relationship with churn, but some mid-range tenure groups appear slightly more likely to leave
 
+
+# DATA PREPARATION AND FEATURE ENGINEERING
+
+df = data.copy()
+
+# Dropping irrelevant features
+df.drop(columns=['RowNumber', 'CustomerId', 'Surname'], inplace=True)
+
+# Converts numeric credit scores into categorical buckets (Fair, Good, Very Good, Excellent)
+bins = [-float('inf'), 559, 659, 724, 759, float('inf')]
+labels = ['Poor', 'Fair', 'Good', 'Very Good', 'Excellent']
+
+df['CreditScoreBucket'] = pd.cut(df['CreditScore'], bins=bins, labels=labels, right=True, include_lowest=True)
+
+# Combining pairs of features to make new ones
+df['Balance_to_Salary'] = df['Balance']/df['EstimatedSalary']
+df['Age_Tenure'] = df['Age']*df['Tenure']
+df['Product_to_Tenure'] = df['NumOfProducts']/(df['Tenure']+1)
+
+# Combining multiple features to calculate an 'Engagement Score'
+from scipy.optimize import minimize
+
+def engagement_score(df, w):
+    # Defining Engagement Score as a linear combination of IsActiveMember, HasCrCard, NumOfProducts, and Tenure
+    # w = [w1, w2, w3, w4]
+    return w[0]*df['IsActiveMember'] + w[1]*df['HasCrCard'] + w[2]*df['NumOfProducts'].astype(int) + w[3]*df['Tenure']
+
+def correlation_loss(w, df, target):
+    score = engagement_score(df, w)
+    corr = np.corrcoef(score, target)[0,1]
+    return 1 - abs(corr)  # Minimize 1 - |corr| to maximize absolute correlation
+
+w0 = np.ones(4)  # Starting with equal weights
+res = minimize(correlation_loss, w0, args=(df, df['Exited']))
+print(res.x)
+
+w = res.x # Gives optimized weights
+
+# Using the optimized weights, we calculate the final Engagement Score for each customer
+df['EngagementScore'] = w[0]*df['IsActiveMember'] + w[1]*df['HasCrCard'] + w[2]*df['NumOfProducts'].astype(int) + w[3]*df['Tenure']
+
+# One-hot encoding
+df['Gender'] = df['Gender'].map({'Male':1,'Female':0})
+
+def oneHotEncoding(df, col:str):
+    return pd.get_dummies(df, columns=[col])
+
+df = oneHotEncoding(df, 'Geography')
+df = oneHotEncoding(df, 'CreditScoreBucket')
+
+# Another heatmap for visualizing the new columns
+columns = ['CreditScore', 'Gender', 'Age', 'Tenure', 'Balance', 'NumOfProducts', 'HasCrCard', 'IsActiveMember', 'EstimatedSalary', 'Exited', 'EngagementScore', 'Balance_to_Salary', 'Age_Tenure', 'Product_to_Tenure', 'Geography_France', 'Geography_Germany', 'Geography_Spain', 'CreditScoreBucket_Poor', 'CreditScoreBucket_Fair', 'CreditScoreBucket_Good', 'CreditScoreBucket_Very Good', 'CreditScoreBucket_Excellent']
+
+correlations = df[columns].corr()
+plt.figure(figsize=[32,16])
+plt.title("Correlation between numerical features")
+sns.heatmap(correlations, cmap=sns.diverging_palette(20, 220, n=200), annot= True)
+plt.show()
+
+# Observations: Poor correlation across the entire dataset for numerical columns
